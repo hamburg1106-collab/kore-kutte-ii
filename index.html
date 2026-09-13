@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>これ食っていい？</title>
+
+<!-- ここからPWA（ホーム画面に追加してアプリのように使うための設定） -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1b7f4e">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="これ食っていい？">
+<!-- ここまでPWA設定 -->
+
+<link rel="stylesheet" href="style.css">
+
+<!-- スマホとPCで同じデータを見るための仕組み（Firebase/Firestore）。
+     読み込めなかったときは自動で端末内保存に切り替わる。 -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="app-header">
+    <h1>これ食っていい？</h1>
+    <span class="sync-badge" id="syncBadge">起動中…</span>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="judge" class="active">判定</button>
+    <button data-tab="today">今日の収支</button>
+    <button data-tab="settings">設定</button>
+  </nav>
+
+  <!-- ========== タブ1: 判定 ========== -->
+  <section class="tab-panel active" id="tab-judge">
+
+    <div class="remain-card" id="remainCard">
+      <div class="remain-label">今日あと食べられる</div>
+      <div class="remain-value"><span id="remainKcal">—</span><span class="unit">kcal</span></div>
+      <div class="remain-sub" id="remainSub">設定タブで身長・体重を入れてください</div>
+    </div>
+
+    <label class="shoot-btn" id="shootBtn">
+      <input type="file" accept="image/*" capture="environment" id="photoInput" hidden>
+      <span class="shoot-icon">📷</span>
+      <span class="shoot-text">写真で判定する</span>
+      <span class="shoot-hint">お菓子は栄養成分表示も一緒に写すと正確</span>
+    </label>
+
+    <div class="judging" id="judging" hidden>
+      <div class="spinner"></div>
+      <p>判定中…</p>
+    </div>
+
+    <div class="error-box" id="judgeError" hidden></div>
+
+    <!-- 判定結果 -->
+    <div class="verdict" id="verdict" hidden>
+      <img class="verdict-photo" id="verdictPhoto" alt="撮影した写真">
+      <div class="verdict-headline" id="verdictHeadline"></div>
+      <div class="verdict-food">
+        <div class="verdict-name" id="verdictName"></div>
+        <div class="verdict-portion" id="verdictPortion"></div>
+      </div>
+      <div class="verdict-kcal"><span id="verdictKcal"></span><span class="unit">kcal</span></div>
+      <div class="verdict-note" id="verdictNote"></div>
+      <div class="verdict-actions">
+        <button class="btn-eat" id="btnEat">食べた！記録する</button>
+        <button class="btn-skip" id="btnSkip">やめた</button>
+      </div>
+      <button class="btn-link" id="btnFixKcal">カロリーを手で直す</button>
+    </div>
+
+    <div class="manual-add">
+      <button class="btn-link" id="btnManualOpen">写真なしで手入力する</button>
+    </div>
+
+  </section>
+
+  <!-- ========== タブ2: 今日の収支 ========== -->
+  <section class="tab-panel" id="tab-today">
+
+    <div class="date-nav">
+      <button id="dayPrev" aria-label="前の日">‹</button>
+      <span id="dayLabel">—</span>
+      <button id="dayNext" aria-label="次の日">›</button>
+    </div>
+
+    <div class="balance">
+      <div class="bar-row">
+        <span class="bar-label">消費</span>
+        <div class="bar"><div class="bar-fill burn" id="barBurn"></div></div>
+        <span class="bar-num" id="numBurn">0</span>
+      </div>
+      <div class="bar-row">
+        <span class="bar-label">摂取</span>
+        <div class="bar"><div class="bar-fill intake" id="barIntake"></div></div>
+        <span class="bar-num" id="numIntake">0</span>
+      </div>
+      <div class="balance-remain">
+        残り <strong id="numRemain">0</strong> kcal
+        <span class="balance-goal" id="goalNote"></span>
+      </div>
+    </div>
+
+    <h2 class="sec-title">運動・消費の入力</h2>
+    <div class="burn-inputs">
+      <label>歩数
+        <input type="number" id="inSteps" inputmode="numeric" placeholder="例 6000">
+      </label>
+      <label>Googleヘルスの消費エネルギー(kcal)
+        <input type="number" id="inActive" inputmode="numeric" placeholder="入れるとこちらを優先">
+      </label>
+    </div>
+    <p class="hint">
+      Googleヘルス（Fit）アプリを開いて、その日の「消費エネルギー」の数字をそのまま入れてください。
+      この数字は基礎代謝を含んだ1日の合計なので、そのまま消費カロリーとして使います。
+      空欄のときだけ、基礎代謝と歩数から概算します。
+    </p>
+
+    <h2 class="sec-title">食べたもの</h2>
+    <ul class="meal-list" id="mealList"></ul>
+    <p class="empty" id="mealEmpty">まだ記録がありません</p>
+
+  </section>
+
+  <!-- ========== タブ3: 設定 ========== -->
+  <section class="tab-panel" id="tab-settings">
+
+    <h2 class="sec-title">からだの情報</h2>
+    <div class="form-grid">
+      <label>身長(cm)<input type="number" id="inHeight" inputmode="decimal" placeholder="170"></label>
+      <label>体重(kg)<input type="number" id="inWeight" inputmode="decimal" placeholder="65"></label>
+      <label>年齢<input type="number" id="inAge" inputmode="numeric" placeholder="35"></label>
+      <label>性別
+        <select id="inSex">
+          <option value="male">男性</option>
+          <option value="female">女性</option>
+        </select>
+      </label>
+      <label class="wide">ふだんの活動量
+        <select id="inActivity">
+          <option value="1.2">ほぼ座っている（デスクワーク中心）</option>
+          <option value="1.375">軽い運動を週1〜3回</option>
+          <option value="1.55">中程度の運動を週3〜5回</option>
+          <option value="1.725">激しい運動を週6〜7回</option>
+        </select>
+      </label>
+      <label class="wide">目標
+        <select id="inGoal">
+          <option value="keep">体重を維持したい</option>
+          <option value="diet">やせたい（1日 −300kcal）</option>
+          <option value="diet500">しっかりやせたい（1日 −500kcal）</option>
+          <option value="gain">増やしたい（1日 +300kcal）</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="bmr-box">
+      <div>基礎代謝 <strong id="showBmr">—</strong> kcal</div>
+      <div>1日の消費の目安 <strong id="showTdee">—</strong> kcal</div>
+    </div>
+
+    <h2 class="sec-title">写真判定の設定</h2>
+    <label class="wide">Gemini APIキー
+      <input type="password" id="inApiKey" placeholder="AIza… から始まる文字列" autocomplete="off">
+    </label>
+    <p class="hint">
+      Google AI Studio（クレジットカード登録不要）で無料で取れます。
+      <strong>このキーはこの端末の中だけに保存され、どこにも送信・同期されません。</strong>
+    </p>
+    <label class="wide">使うモデル
+      <select id="inModel">
+        <option value="gemini-3.8-flash">gemini-3.8-flash（推奨・無料枠）</option>
+        <option value="gemini-3.7-flash">gemini-3.7-flash</option>
+        <option value="gemini-3.6-flash">gemini-3.6-flash</option>
+        <option value="gemini-3.5-flash">gemini-3.5-flash</option>
+      </select>
+    </label>
+    <button class="btn-sub" id="btnTestKey">キーの動作を確認する</button>
+    <div class="error-box" id="keyTestResult" hidden></div>
+
+    <h2 class="sec-title">端末間の同期</h2>
+    <label class="wide">同期コード
+      <input type="text" id="inSyncCode" autocomplete="off" spellcheck="false">
+    </label>
+    <div class="sync-actions">
+      <button class="btn-sub" id="btnCopyCode">コピー</button>
+      <button class="btn-sub" id="btnNewCode">新しく作り直す</button>
+    </div>
+    <p class="hint">
+      この合言葉を知っている端末だけが、自分のデータを読み書きできます。
+      <strong>スマホでも同じコードを入れると、同じ記録が見られます。</strong>
+      人に教えないでください。作り直すと今までの記録は見えなくなります。
+    </p>
+
+    <h2 class="sec-title">データ</h2>
+    <button class="btn-sub" id="btnExport">バックアップを書き出す</button>
+    <p class="hint" id="storeNote"></p>
+
+  </section>
+
+</div>
+
+<!-- 手入力・修正用のダイアログ -->
+<div class="modal" id="modal" hidden>
+  <div class="modal-card">
+    <h3 id="modalTitle">手入力で追加</h3>
+    <label>食べたもの<input type="text" id="mName" placeholder="例 ポテトチップス"></label>
+    <label>量<input type="text" id="mPortion" placeholder="例 1袋 60g"></label>
+    <label>カロリー(kcal)<input type="number" id="mKcal" inputmode="numeric" placeholder="335"></label>
+    <div class="modal-actions">
+      <button class="btn-sub" id="mCancel">キャンセル</button>
+      <button class="btn-eat" id="mOk">決定</button>
+    </div>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
