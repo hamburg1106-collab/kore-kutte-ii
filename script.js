@@ -357,22 +357,34 @@ function isTooOld(key) {
   return key < shiftKey(todayKey(), -HISTORY_DAYS);
 }
 
-/* その日の消費カロリー。Googleヘルスの実測値があればそれを優先する */
-function calcBurn(key) {
+/* その日の消費カロリーを、見込みと実測の大きい方で出す。
+
+   Googleヘルスの「消費エネルギー」は基礎代謝を含んだ合計だが、あくまで
+   “入力した時点まで”の実績。昼に入れた値をそのまま1日の消費として扱うと、
+   夜までに増えるぶんが無視されて判定が不当に厳しくなる。
+   そこで「1日を終えたときの見込み」と比べ、大きい方を採用する。
+   - 日中は実測がまだ小さいので見込みを使う
+   - よく動いた日や寝る前は実測が見込みを超えるので実測を使う */
+function calcBurnDetail(key) {
   const p = state.profile;
   const bmr = calcBmr(p);
-  if (!bmr) return 0;
+  if (!bmr) return { total: 0, estimate: 0, actual: 0, source: "none" };
+
   const d = dailyOf(key);
-
-  // Googleヘルスの「消費エネルギー」は基礎代謝を含んだ1日の総消費なので、
-  // そのまま消費として使う（基礎代謝を足すと二重計上になる）
-  if (d.activeKcal > 0) {
-    return Math.round(Number(d.activeKcal));
-  }
-
-  // 実測がなければ活動係数で概算し、歩数ぶんを上乗せする
   const stepKcal = (Number(d.steps) || 0) * (p.weight || 0) * 0.0005;
-  return Math.round(calcTdee(p) + stepKcal);
+  const estimate = Math.round(calcTdee(p) + stepKcal);
+  const actual = Math.round(Number(d.activeKcal) || 0);
+
+  return {
+    total: Math.max(estimate, actual),
+    estimate: estimate,
+    actual: actual,
+    source: actual > estimate ? "actual" : "estimate",
+  };
+}
+
+function calcBurn(key) {
+  return calcBurnDetail(key).total;
 }
 
 function calcIntake(key) {
@@ -404,7 +416,41 @@ function renderAll() {
   renderRemainCard();
   renderBalance();
   renderMealList();
+  renderWeek();
   renderBmrBox();
+  renderReminder();
+}
+
+/* 「20:28 更新」のような文字列にする。前の日の入力なら日付も添える */
+function updatedLabel(iso) {
+  if (!iso) return "";
+  const t = new Date(iso);
+  if (isNaN(t)) return "";
+  const hhmm =
+    String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0");
+  if (dateKey(t) === todayKey()) return hhmm + " 更新";
+  return t.getMonth() + 1 + "/" + t.getDate() + " " + hhmm + " 更新";
+}
+
+/* 寝る前に消費エネルギーを入れ直してもらうためのお知らせ。
+   21時を過ぎていて、今日の数字がまだ入っていないか21時前の入力のときだけ出す */
+function needsReminder() {
+  if (!calcBmr(state.profile)) return false;
+
+  const now = new Date();
+  if (now.getHours() < 21) return false;
+
+  const d = dailyOf(todayKey());
+  if (!d.activeKcal) return true;
+  if (!d.updatedAt) return true;
+
+  const t = new Date(d.updatedAt);
+  if (isNaN(t)) return true;
+  return dateKey(t) !== todayKey() || t.getHours() < 21;
+}
+
+function renderReminder() {
+  document.getElementById("reminder").hidden = !needsReminder();
 }
 
 function renderRemainCard() {
@@ -421,17 +467,21 @@ function renderRemainCard() {
 
   const key = todayKey();
   const remain = calcRemain(key);
+  const detail = calcBurnDetail(key);
+  const mark = detail.source === "actual" ? "実測" : "見込み";
+
   el.textContent = remain.toLocaleString();
   card.classList.toggle("over", remain <= 0);
   sub.textContent =
     remain > 0
-      ? `消費 ${calcBurn(key).toLocaleString()} − 食べた ${calcIntake(key).toLocaleString()}`
+      ? `消費 ${detail.total.toLocaleString()}(${mark}) − 食べた ${calcIntake(key).toLocaleString()}`
       : "今日はもうオーバーしています";
 }
 
 function renderBalance() {
   const key = state.viewDate;
-  const burn = calcBurn(key);
+  const detail = calcBurnDetail(key);
+  const burn = detail.total;
   const intake = calcIntake(key);
   const remain = calcRemain(key);
   const max = Math.max(burn, intake, 1);
@@ -448,6 +498,36 @@ function renderBalance() {
   document
     .querySelector(".balance-remain")
     .classList.toggle("over", remain <= 0);
+
+  // 消費に対してどれだけ食べたか
+  const rateEl = document.getElementById("intakeRate");
+  if (burn > 0 && intake > 0) {
+    const rate = Math.round((intake / burn) * 100);
+    rateEl.innerHTML = "消費の <strong>" + rate + "%</strong> を摂取";
+    rateEl.classList.toggle("over", rate > 100);
+  } else {
+    rateEl.textContent = "";
+    rateEl.classList.remove("over");
+  }
+
+  // その消費カロリーがどこから来た数字なのかを示す
+  const d = dailyOf(key);
+  const srcEl = document.getElementById("burnSource");
+  if (!burn) {
+    srcEl.textContent = "";
+  } else if (detail.source === "actual") {
+    srcEl.textContent = "Googleヘルスの実測値を使用 " + (updatedLabel(d.updatedAt) || "");
+  } else if (detail.actual > 0) {
+    srcEl.textContent =
+      "見込みで計算中（実測 " +
+      detail.actual.toLocaleString() +
+      " はまだ途中の値）" +
+      (updatedLabel(d.updatedAt) ? " / " + updatedLabel(d.updatedAt) : "");
+  } else {
+    srcEl.textContent = "基礎代謝と歩数からの見込み";
+  }
+
+  document.getElementById("activeUpdated").textContent = updatedLabel(d.updatedAt);
 
   // 未来の日付には進めないようにする
   document.getElementById("dayNext").disabled = key >= todayKey();
@@ -520,6 +600,65 @@ function renderMealList() {
   });
 }
 
+/* 1週間リスト用の短い日付ラベル。幅が狭いので「9/12(金)」程度に収める */
+function weekLabel(key) {
+  if (key === todayKey()) return "今日";
+  if (key === shiftKey(todayKey(), -1)) return "昨日";
+  const [y, m, d] = key.split("-").map(Number);
+  const w = ["日", "月", "火", "水", "木", "金", "土"][new Date(y, m - 1, d).getDay()];
+  return m + "/" + d + "(" + w + ")";
+}
+
+/* 直近7日の消費と摂取を並べて、数日単位の傾向が見えるようにする */
+function renderWeek() {
+  const ul = document.getElementById("weekList");
+  ul.innerHTML = "";
+
+  if (!calcBmr(state.profile)) return;
+
+  for (let i = 0; i < 7; i++) {
+    const key = shiftKey(todayKey(), -i);
+    const burn = calcBurn(key);
+    const intake = calcIntake(key);
+    const rate = burn > 0 ? Math.round((intake / burn) * 100) : 0;
+    const over = intake > burn;
+
+    const li = document.createElement("li");
+    if (key === todayKey()) li.className = "today";
+    li.onclick = () => {
+      state.viewDate = key;
+      fillBurnForm();
+      renderAll();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+
+    const day = document.createElement("div");
+    day.className = "week-day";
+    day.textContent = weekLabel(key);
+    li.appendChild(day);
+
+    const bar = document.createElement("div");
+    bar.className = "week-bar";
+    const fill = document.createElement("span");
+    fill.style.width = Math.min(100, rate) + "%";
+    if (over) fill.className = "over";
+    bar.appendChild(fill);
+    li.appendChild(bar);
+
+    const num = document.createElement("div");
+    num.className = "week-num" + (over ? " over" : "");
+    if (intake > 0) {
+      num.innerHTML =
+        "<b>" + rate + "%</b> <small>" + intake.toLocaleString() + "/" + burn.toLocaleString() + "</small>";
+    } else {
+      num.innerHTML = "<small>記録なし</small>";
+    }
+    li.appendChild(num);
+
+    ul.appendChild(li);
+  }
+}
+
 function renderBmrBox() {
   const bmr = calcBmr(state.profile);
   document.getElementById("showBmr").textContent = bmr ? bmr.toLocaleString() : "—";
@@ -530,17 +669,30 @@ function renderBmrBox() {
 
 /* ---------- タブ ---------- */
 
-document.getElementById("tabs").addEventListener("click", (ev) => {
-  const btn = ev.target.closest("button");
-  if (!btn) return;
-
+function showTab(name) {
   document
     .querySelectorAll("#tabs button")
-    .forEach((b) => b.classList.toggle("active", b === btn));
+    .forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
   document
     .querySelectorAll(".tab-panel")
-    .forEach((p) => p.classList.toggle("active", p.id === "tab-" + btn.dataset.tab));
+    .forEach((p) => p.classList.toggle("active", p.id === "tab-" + name));
+}
+
+document.getElementById("tabs").addEventListener("click", (ev) => {
+  const btn = ev.target.closest("button");
+  if (btn) showTab(btn.dataset.tab);
 });
+
+/* お知らせを押したら、その場で入力できるよう収支タブの入力欄へ飛ばす */
+document.getElementById("reminder").onclick = () => {
+  state.viewDate = todayKey();
+  fillBurnForm();
+  renderAll();
+  showTab("today");
+  const el = document.getElementById("inActive");
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  setTimeout(() => el.focus(), 400);
+};
 
 /* ---------- 設定フォーム ---------- */
 
@@ -675,6 +827,7 @@ async function saveDaily() {
     date: key,
     steps: Number(document.getElementById("inSteps").value) || 0,
     activeKcal: Number(document.getElementById("inActive").value) || 0,
+    updatedAt: new Date().toISOString(), // いつの時点の数字かを残す
   };
   try {
     const existing = state.daily.find((d) => d.date === key);
@@ -1066,6 +1219,19 @@ document.getElementById("btnExport").onclick = () => {
 initStore();
 fillSettingsForm();
 renderAll();
+
+/* 開きっぱなしでも、21時になったらお知らせが出て、日付が変われば今日に切り替わるようにする */
+let lastSeenDay = todayKey();
+setInterval(() => {
+  if (todayKey() !== lastSeenDay) {
+    lastSeenDay = todayKey();
+    state.viewDate = lastSeenDay;
+    fillBurnForm();
+    renderAll();
+  } else {
+    renderReminder();
+  }
+}, 60000);
 
 /* オフラインでも開けるようにする。file:// で開いたときは登録できないので黙って飛ばす */
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {

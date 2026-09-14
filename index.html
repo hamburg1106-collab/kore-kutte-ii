@@ -44,6 +44,10 @@
       <div class="remain-sub" id="remainSub">設定タブで身長・体重を入れてください</div>
     </div>
 
+    <button class="reminder" id="reminder" hidden>
+      🌙 寝る前にGoogleヘルスの消費エネルギーを入れると、今日の記録が締まります
+    </button>
+
     <label class="shoot-btn" id="shootBtn">
       <input type="file" accept="image/*" capture="environment" id="photoInput" hidden>
       <span class="shoot-icon">📷</span>
@@ -105,6 +109,8 @@
         残り <strong id="numRemain">0</strong> kcal
         <span class="balance-goal" id="goalNote"></span>
       </div>
+      <div class="intake-rate" id="intakeRate"></div>
+      <div class="burn-source" id="burnSource"></div>
     </div>
 
     <h2 class="sec-title">運動・消費の入力</h2>
@@ -113,18 +119,22 @@
         <input type="number" id="inSteps" inputmode="numeric" placeholder="例 6000">
       </label>
       <label>Googleヘルスの消費エネルギー(kcal)
-        <input type="number" id="inActive" inputmode="numeric" placeholder="入れるとこちらを優先">
+        <input type="number" id="inActive" inputmode="numeric" placeholder="寝る前に入れると正確">
+        <span class="updated-at" id="activeUpdated"></span>
       </label>
     </div>
     <p class="hint">
-      Googleヘルス（Fit）アプリを開いて、その日の「消費エネルギー」の数字をそのまま入れてください。
-      この数字は基礎代謝を含んだ1日の合計なので、そのまま消費カロリーとして使います。
-      空欄のときだけ、基礎代謝と歩数から概算します。
+      Googleヘルス（Fit）アプリの「消費エネルギー」をそのまま入れてください。
+      日中に入れた数字はまだ途中の値なので、<strong>寝る前に入れ直すと一番正確</strong>になります。
+      入れ忘れても、基礎代謝と歩数からの見込みで計算するので大きくは外れません。
     </p>
 
     <h2 class="sec-title">食べたもの</h2>
     <ul class="meal-list" id="mealList"></ul>
     <p class="empty" id="mealEmpty">まだ記録がありません</p>
+
+    <h2 class="sec-title">この1週間</h2>
+    <ul class="week-list" id="weekList"></ul>
 
   </section>
 

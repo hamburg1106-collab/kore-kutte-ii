@@ -131,6 +131,26 @@ body {
 .remain-card.over .remain-value { color: var(--red); }
 .remain-sub { font-size: 12px; color: var(--ink-sub); }
 
+/* ===== 寝る前のお知らせ ===== */
+.reminder {
+  display: block;
+  width: 100%;
+  background: var(--yellow-soft);
+  color: var(--yellow);
+  border: none;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: 600;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+}
+
+.reminder[hidden] { display: none; }
+
 /* ===== 撮影ボタン ===== */
 .shoot-btn {
   display: flex;
@@ -335,6 +355,77 @@ body {
 
 .balance-remain strong { font-size: 24px; }
 .balance-remain.over strong { color: var(--red); }
+
+/* 消費に対してどれだけ食べたか */
+.intake-rate { font-size: 13px; color: var(--ink-sub); margin-top: 2px; }
+.intake-rate strong { color: var(--ink); font-size: 15px; }
+.intake-rate.over strong { color: var(--red); }
+
+/* 消費カロリーを見込みで出しているのか実測で出しているのか */
+.burn-source { font-size: 11px; color: var(--ink-sub); margin-top: 6px; }
+
+/* 入力欄の下に出す最終更新時刻 */
+.updated-at {
+  display: block;
+  font-size: 11px;
+  color: var(--ink-sub);
+  margin-top: 4px;
+  min-height: 16px;
+}
+
+/* ===== この1週間 ===== */
+.week-list { list-style: none; padding: 0; margin: 0; }
+
+.week-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--card);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 7px;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+
+.week-list li.today { border: 1px solid var(--green); }
+
+.week-day {
+  font-size: 12px;
+  font-weight: 700;
+  width: 58px;
+  flex-shrink: 0;
+}
+
+.week-bar {
+  flex: 1;
+  height: 9px;
+  background: var(--bg);
+  border-radius: 999px;
+  overflow: hidden;
+  min-width: 40px;
+}
+
+.week-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: #e08a3c;
+}
+
+.week-bar span.over { background: var(--red); }
+
+.week-num {
+  font-size: 12px;
+  width: 88px;
+  text-align: right;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.week-num b { font-weight: 700; }
+.week-num.over b { color: var(--red); }
+.week-num small { color: var(--ink-sub); font-size: 11px; }
 .balance-goal { font-size: 11px; color: var(--ink-sub); margin-left: 8px; }
 
 /* ===== フォーム ===== */
