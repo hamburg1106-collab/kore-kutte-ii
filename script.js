@@ -293,7 +293,15 @@ async function initStore() {
   try {
     if (canUseCloud && window.firebase && FIREBASE_CONFIG.apiKey) {
       firebase.initializeApp(FIREBASE_CONFIG);
-      backend = createFirebaseBackend(firebase.firestore(), code);
+      const fs = firebase.firestore();
+
+      // 一度読んだ記録を端末内にも持っておく。圏外や機内モードでも過去の記録を見られる。
+      // 複数タブで開いていたり非対応ブラウザだと失敗するが、その場合は今まで通り動く。
+      fs.enablePersistence({ synchronizeTabs: true }).catch((e) =>
+        console.warn("オフライン保存は使えません", e && e.code)
+      );
+
+      backend = createFirebaseBackend(fs, code);
     }
   } catch (e) {
     backend = null;
