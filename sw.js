@@ -1,7 +1,7 @@
 /* オフラインでも起動できるようにするための仕組み。
    アプリのファイルを更新したら CACHE_NAME の数字を1つ増やす。 */
 
-const CACHE_NAME = "korekutte-v5";
+const CACHE_NAME = "korekutte-v6";
 
 const ASSETS = [
   "./",

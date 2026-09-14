@@ -185,12 +185,11 @@
     </p>
     <label class="wide">使うモデル
       <select id="inModel">
-        <option value="gemini-3.8-flash">gemini-3.8-flash（推奨・無料枠）</option>
-        <option value="gemini-3.7-flash">gemini-3.7-flash</option>
-        <option value="gemini-3.6-flash">gemini-3.6-flash</option>
-        <option value="gemini-3.5-flash">gemini-3.5-flash</option>
+        <option value="auto">自動（いちばん新しいFlashを使う）</option>
       </select>
+      <span class="updated-at" id="modelNow"></span>
     </label>
+    <button class="btn-sub" id="btnRefreshModels">使えるモデルの一覧を取り直す</button>
     <button class="btn-sub" id="btnTestKey">キーの動作を確認する</button>
     <div class="error-box" id="keyTestResult" hidden></div>
 

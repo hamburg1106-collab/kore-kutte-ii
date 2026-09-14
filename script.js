@@ -97,6 +97,113 @@ function setSyncCode(v) {
   }
 }
 
+/* ---------- 使えるモデルの一覧 ----------
+   モデルは新しいものが出たり古いものが消えたりするので、選択肢を決め打ちにせず
+   APIから取り直せるようにしておく。「自動」を選んでおけば一番新しいFlashを使う。 */
+
+const MODELS_STORAGE = "korekutte_models";
+
+function getCachedModels() {
+  try {
+    const v = JSON.parse(localStorage.getItem(MODELS_STORAGE) || "[]");
+    return Array.isArray(v) ? v : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function setCachedModels(list) {
+  try {
+    localStorage.setItem(MODELS_STORAGE, JSON.stringify(list));
+  } catch (e) {
+    /* 保存できなくても動作に支障はない */
+  }
+}
+
+/* gemini-3.8-flash のようなIDを比較用の数値にする。
+   Flash-Lite や preview 版は安定性と性能の都合で対象外にする（nullを返す）。
+   3.8 -> 3008 / 4 -> 4000 と桁を分けるので、将来 gemini-4-flash が出ても正しく新しい方が勝つ。 */
+function flashRank(id) {
+  const m = /^gemini-(\d+)(?:\.(\d+))?-flash$/.exec(id);
+  if (!m) return null;
+  return Number(m[1]) * 1000 + Number(m[2] || 0);
+}
+
+/* 設定が「自動」のときに実際に使うモデルを決める */
+function resolveModel() {
+  const chosen = state.profile.model || "auto";
+  if (chosen !== "auto") return chosen;
+
+  const ranked = getCachedModels()
+    .map((id) => ({ id: id, rank: flashRank(id) }))
+    .filter((x) => x.rank !== null)
+    .sort((a, b) => b.rank - a.rank);
+
+  return ranked.length ? ranked[0].id : DEFAULT_MODEL;
+}
+
+/* APIキーで使えるモデルの一覧を取り直す */
+async function fetchModels(key) {
+  const res = await fetch(
+    "https://generativelanguage.googleapis.com/v1beta/models?pageSize=200",
+    { headers: { "x-goog-api-key": key } }
+  );
+  const data = await res.json().catch(() => null);
+
+  if (!res.ok) {
+    throw new Error((data && data.error && data.error.message) || "HTTP " + res.status);
+  }
+
+  const list = (data.models || [])
+    .filter((m) => (m.supportedGenerationMethods || []).indexOf("generateContent") >= 0)
+    .map((m) => String(m.name || "").replace(/^models\//, ""))
+    .filter((id) => id.indexOf("gemini-") === 0);
+
+  setCachedModels(list);
+  return list;
+}
+
+/* 設定タブのモデル選択肢を作り直す */
+function buildModelSelect() {
+  const sel = document.getElementById("inModel");
+  const current = state.profile.model || "auto";
+  const models = getCachedModels();
+
+  // 一覧が取れていないときは、今選ばれているものだけは選択肢に残す
+  const ids = models.length ? models.slice() : [DEFAULT_MODEL];
+  if (current !== "auto" && ids.indexOf(current) < 0) ids.push(current);
+
+  // 新しいFlashを上に、それ以外はその下に並べる
+  const flash = ids.filter((id) => flashRank(id) !== null).sort((a, b) => flashRank(b) - flashRank(a));
+  const others = ids.filter((id) => flashRank(id) === null).sort();
+
+  sel.innerHTML = "";
+  const auto = document.createElement("option");
+  auto.value = "auto";
+  auto.textContent = "自動（いちばん新しいFlashを使う）";
+  sel.appendChild(auto);
+
+  flash.concat(others).forEach((id) => {
+    const op = document.createElement("option");
+    op.value = id;
+    op.textContent = id;
+    sel.appendChild(op);
+  });
+
+  sel.value = current;
+  renderModelNow();
+}
+
+function renderModelNow() {
+  const el = document.getElementById("modelNow");
+  if (!el) return;
+  const chosen = state.profile.model || "auto";
+  el.textContent =
+    chosen === "auto"
+      ? "いま使うのは " + resolveModel() + "（一覧 " + getCachedModels().length + " 件から選択）"
+      : "";
+}
+
 /* ---------- 保存先: 端末内(localStorage) ---------- */
 
 function createLocalBackend() {
@@ -206,7 +313,7 @@ const state = {
     sex: "male",
     activity: 1.2,
     goal: "keep",
-    model: DEFAULT_MODEL,
+    model: "auto",
   },
   profileId: null,
   meals: [],
@@ -419,6 +526,7 @@ function renderAll() {
   renderWeek();
   renderBmrBox();
   renderReminder();
+  renderModelNow();
 }
 
 /* 「20:28 更新」のような文字列にする。前の日の入力なら日付も添える */
@@ -707,6 +815,8 @@ const settingFields = [
 ];
 
 function fillSettingsForm() {
+  buildModelSelect(); // モデルの選択肢は動的に作るので、値を入れる前に組み立てる
+
   settingFields.forEach(([id, key]) => {
     const el = document.getElementById(id);
     const v = state.profile[key];
@@ -902,7 +1012,7 @@ async function askGemini(base64) {
     throw new Error("設定タブで Gemini APIキーを入れてください。");
   }
 
-  const model = state.profile.model || DEFAULT_MODEL;
+  const model = resolveModel();
   const url =
     "https://generativelanguage.googleapis.com/v1beta/models/" +
     encodeURIComponent(model) +
@@ -1171,7 +1281,7 @@ document.getElementById("btnTestKey").onclick = async () => {
     return;
   }
 
-  const model = document.getElementById("inModel").value || DEFAULT_MODEL;
+  const model = resolveModel();
 
   try {
     const res = await fetch(
@@ -1191,6 +1301,34 @@ document.getElementById("btnTestKey").onclick = async () => {
     }
   } catch (e) {
     box.textContent = "通信できませんでした。ネットワークの状態を確認してください。";
+  }
+};
+
+/* ---------- モデル一覧の取り直し ---------- */
+
+document.getElementById("btnRefreshModels").onclick = async () => {
+  const box = document.getElementById("keyTestResult");
+  const key = document.getElementById("inApiKey").value.trim();
+  setApiKey(key);
+
+  box.hidden = false;
+  box.className = "error-box";
+
+  if (!key) {
+    box.textContent = "先にAPIキーを入れてください。";
+    return;
+  }
+
+  box.textContent = "一覧を取得中…";
+
+  try {
+    const list = await fetchModels(key);
+    buildModelSelect();
+    box.className = "error-box good";
+    box.textContent =
+      "使えるモデルを " + list.length + " 件見つけました。\nいま使うのは " + resolveModel() + " です。";
+  } catch (e) {
+    box.textContent = "一覧を取得できませんでした。\n\n" + ((e && e.message) || "");
   }
 };
 
@@ -1219,6 +1357,19 @@ document.getElementById("btnExport").onclick = () => {
 initStore();
 fillSettingsForm();
 renderAll();
+
+/* 起動のたびに裏でモデル一覧を取り直す。新しいモデルが出れば「自動」設定なら次から使われる。
+   失敗しても前回の一覧か既定のモデルで動くので、ここでは何も知らせない。 */
+(async function refreshModelsQuietly() {
+  const key = getApiKey();
+  if (!key) return;
+  try {
+    await fetchModels(key);
+    buildModelSelect();
+  } catch (e) {
+    console.warn("モデル一覧を取得できませんでした", e && e.message);
+  }
+})();
 
 /* 開きっぱなしでも、21時になったらお知らせが出て、日付が変われば今日に切り替わるようにする */
 let lastSeenDay = todayKey();
