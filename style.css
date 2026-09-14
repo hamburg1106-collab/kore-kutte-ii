@@ -351,6 +351,17 @@ body {
   gap: 11px;
 }
 
+/* ラベルが長いので横に並べると入力欄の位置がずれる。縦に積む */
+.burn-inputs { grid-template-columns: 1fr; }
+
+/* ラベルが2行になっても入力欄の上端が揃うようにする */
+.form-grid label {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  margin-bottom: 0;
+}
+
 label {
   display: block;
   font-size: 12px;
@@ -371,6 +382,8 @@ input[type="text"], input[type="number"], input[type="password"], select {
   border: 1px solid var(--line);
   border-radius: 10px;
 }
+
+input:disabled, select:disabled { opacity: .45; }
 
 .hint { font-size: 11px; color: var(--ink-sub); margin: 2px 0 14px; }
 
@@ -408,9 +421,26 @@ input[type="text"], input[type="number"], input[type="password"], select {
 }
 
 .meal-body { flex: 1; min-width: 0; }
-.meal-name { font-size: 14px; font-weight: 700; overflow-wrap: anywhere; }
+
+.meal-name {
+  font-size: 14px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  /* 長い名前でカードからはみ出さないよう2行までで打ち切る */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .meal-portion { font-size: 11px; color: var(--ink-sub); }
-.meal-kcal { font-size: 15px; font-weight: 700; white-space: nowrap; }
+
+.meal-kcal {
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
 
 .meal-del {
   background: none;

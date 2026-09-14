@@ -5,6 +5,10 @@
 
 const DEFAULT_MODEL = "gemini-3.8-flash";
 
+/* 起動時に読み込む日数。記録が何年ぶん貯まっても起動が重くならないようにするための上限。
+   これより古い記録も消えてはおらず、クラウド上には残っている。 */
+const HISTORY_DAYS = 120;
+
 /* 目標ごとの1日の増減(kcal)。プラスの値だけ残りカロリーから引く */
 const GOAL_DIFF = { keep: 0, diet: 300, diet500: 500, gain: -300 };
 const GOAL_TEXT = {
@@ -165,7 +169,13 @@ function createFirebaseBackend(fsDb, syncCode) {
   return {
     kind: "firebase",
     subscribe(name, cb) {
-      return cols[name].onSnapshot(
+      // 日付を持つデータは直近ぶんだけ読む。全件読むと記録が増えるほど起動が重くなるため
+      let query = cols[name];
+      if (name === "meals" || name === "daily") {
+        query = query.where("date", ">=", shiftKey(todayKey(), -HISTORY_DAYS));
+      }
+
+      return query.onSnapshot(
         (snap) => cb(snap.docs.map((d) => Object.assign({ id: d.id }, d.data()))),
         (err) => {
           console.error("firestore " + name + " error", err);
@@ -334,6 +344,11 @@ function mealsOf(key) {
   return state.meals.filter((m) => m.date === key);
 }
 
+/* 読み込み範囲より古い日かどうか。ここに入力させると重複登録になるので編集も止める */
+function isTooOld(key) {
+  return key < shiftKey(todayKey(), -HISTORY_DAYS);
+}
+
 /* その日の消費カロリー。Googleヘルスの実測値があればそれを優先する */
 function calcBurn(key) {
   const p = state.profile;
@@ -428,6 +443,11 @@ function renderBalance() {
 
   // 未来の日付には進めないようにする
   document.getElementById("dayNext").disabled = key >= todayKey();
+
+  // 読み込んでいない古い日は、運動の入力も止めておく
+  const old = isTooOld(key);
+  document.getElementById("inSteps").disabled = old;
+  document.getElementById("inActive").disabled = old;
 }
 
 function renderMealList() {
@@ -436,7 +456,12 @@ function renderMealList() {
     (a.createdAt || "").localeCompare(b.createdAt || "")
   );
 
-  document.getElementById("mealEmpty").hidden = rows.length > 0;
+  const empty = document.getElementById("mealEmpty");
+  empty.hidden = rows.length > 0;
+  empty.textContent = isTooOld(state.viewDate)
+    ? "この日の記録は読み込んでいません（消えてはいません）"
+    : "まだ記録がありません";
+
   ul.innerHTML = "";
 
   rows.forEach((m) => {
@@ -455,6 +480,7 @@ function renderMealList() {
     const name = document.createElement("div");
     name.className = "meal-name";
     name.textContent = m.name;
+    name.title = m.name; // 2行で切れたときに全文を確認できるように
     body.appendChild(name);
 
     if (m.portion) {
@@ -691,7 +717,8 @@ const JUDGE_PROMPT = `この写真に写っている食べ物・飲み物を判�
 
 - パッケージの栄養成分表示が読み取れる場合は、その数値を最優先で使ってください。
 - calories には「写真に写っている量ぜんぶ」の合計カロリーを入れてください。100gあたりの値ではありません。
-- portion には「1袋 60g」「茶碗1杯 150g」のように、写っている量を書いてください。
+- name は25文字以内で簡潔に。おかずが何品もある食事は品名を並べず「鶏ソテー定食」のようにまとめて呼んでください。
+- portion には「1袋 60g」「茶碗1杯 150g」のように、写っている量を書いてください。品数が多い食事は、ここに中身を書いてください。
 - 食べ物でも飲み物でもない写真なら is_food を false にしてください。
 - note には、どうやってカロリーを見積もったかを1文で簡潔に書いてください。`;
 
