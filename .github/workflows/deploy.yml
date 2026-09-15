@@ -1,0 +1,59 @@
+# main に push するたびに、自動でビルドして GitHub Pages に公開する。
+# これがあるおかげで、今までどおり push するだけでよくなる。
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  # GitHubの画面から手動で実行することもできる
+  workflow_dispatch:
+
+# Pages に公開するために必要な権限
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 公開作業が同時に走らないようにする（後から来たものを優先）
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: ソースを取得
+        uses: actions/checkout@v4
+
+      - name: Node.js を用意
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: 部品を入れる
+        run: npm ci
+
+      - name: ビルドする
+        run: npm run build
+
+      - name: Pages の設定を読み込む
+        uses: actions/configure-pages@v5
+
+      - name: ビルド結果をアップロード
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 公開する
+        id: deployment
+        uses: actions/deploy-pages@v4

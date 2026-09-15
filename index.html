@@ -14,7 +14,8 @@
 <meta name="apple-mobile-web-app-title" content="これ食っていい？">
 <!-- ここまでPWA設定 -->
 
-<link rel="stylesheet" href="style.css">
+<!-- style.css は src/main.js の先頭で import しているので、
+     ここに <link> は書かない（Viteがまとめて読み込む）。 -->
 
 <!-- スマホとPCで同じデータを見るための仕組み（Firebase/Firestore）。
      読み込めなかったときは自動で端末内保存に切り替わる。 -->
@@ -229,6 +230,6 @@
   </div>
 </div>
 
-<script src="script.js"></script>
+<script type="module" src="/src/main.js"></script>
 </body>
 </html>

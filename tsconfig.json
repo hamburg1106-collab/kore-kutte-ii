@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "resolveJsonModule": true,
+
+    // 段階1では .js のまま置いてあるので、型チェックはまだ走らせない。
+    // 段階2で main.js を main.ts に変えるときに checkJs を true にする。
+    "allowJs": true,
+    "checkJs": false
+  },
+  "include": ["src"]
+}

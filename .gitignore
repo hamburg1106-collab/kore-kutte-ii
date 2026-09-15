@@ -1,0 +1,10 @@
+# npm が入れる部品置き場。巨大なうえ npm install で復元できるので記録しない
+node_modules/
+
+# ビルド結果。GitHub Actions が毎回作り直すので記録しない
+dist/
+
+# エディタやOSが勝手に作るファイル
+.DS_Store
+Thumbs.db
+*.local
