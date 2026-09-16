@@ -17,10 +17,8 @@
 <!-- style.css は src/main.js の先頭で import しているので、
      ここに <link> は書かない（Viteがまとめて読み込む）。 -->
 
-<!-- スマホとPCで同じデータを見るための仕組み（Firebase/Firestore）。
-     読み込めなかったときは自動で端末内保存に切り替わる。 -->
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<!-- Firebase(Firestore)は src/main.js から読み込んでいる。
+     外部サーバーから読むと圏外のときに失敗するので、ビルドに同梱している。 -->
 </head>
 <body>
 <div class="wrap">
@@ -133,6 +131,7 @@
     <h2 class="sec-title">食べたもの</h2>
     <ul class="meal-list" id="mealList"></ul>
     <p class="empty" id="mealEmpty">まだ記録がありません</p>
+    <button class="btn-sub" id="btnAddToDay">この日に手で追加</button>
 
     <h2 class="sec-title">この1週間</h2>
     <ul class="week-list" id="weekList"></ul>
@@ -229,6 +228,9 @@
     </div>
   </div>
 </div>
+
+<!-- 保存できた／できなかったを一瞬だけ知らせる帯 -->
+<div class="toast" id="toast" hidden></div>
 
 <script type="module" src="/src/main.js"></script>
 </body>

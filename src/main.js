@@ -7,7 +7,17 @@
    こうしておくとVite側でまとめてくれるので、公開時のキャッシュ事故が減る。 */
 import "./style.css";
 
+/* Firebaseもここから読み込む。以前は index.html で外部サーバー(gstatic.com)から
+   読んでいたが、それだと圏外のときに読み込めず、クラウドの記録が1件も出ない状態に
+   なっていた。ビルドに同梱すればService Workerがキャッシュするのでオフラインでも動く。
+   compat版を使うのは、既存のコード（firebase.initializeApp など）をそのまま使うため。 */
+import firebase from "firebase/compat/app";
+import "firebase/compat/firestore";
+
 const DEFAULT_MODEL = "gemini-3.8-flash";
+
+/* 設定の置き場所。固定にしておくと、続けて操作しても同じものが2つできない */
+const PROFILE_ID = "me";
 
 /* 起動時に読み込む日数。記録が何年ぶん貯まっても起動が重くならないようにするための上限。
    これより古い記録も消えてはおらず、クラウド上には残っている。 */
@@ -252,6 +262,16 @@ function createLocalBackend() {
       );
       writeAll(name, arr);
     },
+
+    /* 置き場所を決めて書き込む。すでにあれば上書き、なければ作る。
+       これなら続けて操作しても同じものが2つできない。 */
+    async setDoc(name, id, data) {
+      const arr = readAll(name);
+      const i = arr.findIndex((d) => d.id === id);
+      if (i >= 0) arr[i] = Object.assign({}, arr[i], data, { id: id });
+      else arr.push(Object.assign({ id: id }, data));
+      writeAll(name, arr);
+    },
     async remove(name, id) {
       writeAll(name, readAll(name).filter((d) => d.id !== id));
     },
@@ -301,6 +321,11 @@ function createFirebaseBackend(fsDb, syncCode) {
     async update(name, id, patch) {
       await cols[name].doc(id).update(patch);
     },
+
+    /* 置き場所を決めて書き込む。すでにあれば上書き、なければ作る。 */
+    async setDoc(name, id, data) {
+      await cols[name].doc(id).set(data, { merge: true });
+    },
     async remove(name, id) {
       await cols[name].doc(id).delete();
     },
@@ -338,9 +363,11 @@ function setBadge(text, on) {
 function subscribeAll() {
   unsubscribers = [
     Store.subscribe("profile", (rows) => {
-      if (rows.length) {
-        state.profileId = rows[0].id;
-        Object.assign(state.profile, rows[0]);
+      // 置き場所を固定する前に作られた設定が残っていても読めるようにしておく
+      const row = rows.find((r) => r.id === PROFILE_ID) || rows[0];
+      if (row) {
+        state.profileId = row.id;
+        Object.assign(state.profile, row);
         delete state.profile.id;
         fillSettingsForm();
       }
@@ -353,14 +380,53 @@ function subscribeAll() {
     }),
 
     Store.subscribe("daily", (rows) => {
-      state.daily = rows;
+      // 同じ日の記録が複数あったら、最後に更新された方だけを使う
+      const byDate = new Map();
+      rows.forEach((r) => {
+        const cur = byDate.get(r.date);
+        if (!cur || (r.updatedAt || "") >= (cur.updatedAt || "")) byDate.set(r.date, r);
+      });
+      state.daily = Array.from(byDate.values());
+
       fillBurnForm();
       renderAll();
     }),
   ];
 }
 
-/* クラウドに繋がらなかったときは、黙って端末内保存に切り替える。
+/* 画面の下に一瞬だけ出すお知らせ。保存できたか分からない不安をなくすため。 */
+let toastTimer = null;
+
+function showToast(message, isError) {
+  const el = document.getElementById("toast");
+  if (!el) return;
+
+  clearTimeout(toastTimer);
+  el.textContent = message;
+  el.classList.toggle("bad", !!isError);
+  el.classList.remove("leaving");
+  el.hidden = false;
+
+  toastTimer = setTimeout(() => {
+    el.classList.add("leaving");
+    toastTimer = setTimeout(() => {
+      el.hidden = true;
+    }, 300);
+  }, isError ? 4000 : 2200);
+}
+
+/* 保存に失敗したときの知らせ方。
+   ここで端末内保存に切り替えてしまうと、それ以降の記録がクラウドに載らなくなり
+   行方不明になるので、切り替えはせず知らせるだけにする。 */
+function notifySaveFailed(err, what) {
+  console.error((what || "保存") + "に失敗しました", err);
+  showToast(
+    (what || "保存") + "できませんでした。電波を確認してもう一度お試しください。",
+    true
+  );
+}
+
+/* 読み込みそのものができないときだけ、端末内保存に切り替える。
    そうしないと入力しても何も保存されない状態になってしまう。 */
 function fallbackToLocal(err) {
   if (!Store || Store.kind !== "firebase") return;
@@ -389,6 +455,7 @@ function fallbackToLocal(err) {
 
 async function initStore() {
   let backend = null;
+  let initError = null;
 
   // file:// で開いた場合はFirestoreに接続できないので、最初から端末内保存にする
   const canUseCloud = location.protocol.startsWith("http");
@@ -402,7 +469,7 @@ async function initStore() {
   document.getElementById("inSyncCode").value = code;
 
   try {
-    if (canUseCloud && window.firebase && FIREBASE_CONFIG.apiKey) {
+    if (canUseCloud && FIREBASE_CONFIG.apiKey) {
       firebase.initializeApp(FIREBASE_CONFIG);
       const fs = firebase.firestore();
 
@@ -415,6 +482,9 @@ async function initStore() {
       backend = createFirebaseBackend(fs, code);
     }
   } catch (e) {
+    // 失敗を黙って捨てると原因を追えなくなるので、理由を残しておく
+    console.error("Firebaseの初期化に失敗しました", e);
+    initError = e;
     backend = null;
   }
 
@@ -426,7 +496,11 @@ async function initStore() {
       "記録はクラウドに保存され、他の端末でも同じ内容が見られます。APIキーだけはこの端末の中だけに置かれます。";
   } else {
     setBadge("この端末に保存", false);
-    document.getElementById("storeNote").textContent = canUseCloud
+    document.getElementById("storeNote").textContent = initError
+      ? "クラウドの準備に失敗したため（" +
+        ((initError && initError.message) || "原因不明") +
+        "）、この端末の中だけに保存しています。"
+      : canUseCloud
       ? "記録はこの端末の中だけに保存されています。"
       : "ファイルを直接開いている（file://）ため、記録はこの端末の中だけに保存されます。複数の端末で同期したい場合は、GitHub Pagesなどに置いて http:// で開いてください。";
   }
@@ -644,10 +718,15 @@ function renderBalance() {
   // 未来の日付には進めないようにする
   document.getElementById("dayNext").disabled = key >= todayKey();
 
-  // 読み込んでいない古い日は、運動の入力も止めておく
+  // 読み込んでいない古い日は、運動の入力も食事の追加も止めておく
   const old = isTooOld(key);
   document.getElementById("inSteps").disabled = old;
   document.getElementById("inActive").disabled = old;
+
+  const addBtn = document.getElementById("btnAddToDay");
+  addBtn.disabled = old;
+  addBtn.textContent =
+    key === todayKey() ? "今日に手で追加" : labelOf(key) + " に手で追加";
 }
 
 function renderMealList() {
@@ -703,7 +782,7 @@ function renderMealList() {
     del.title = "削除";
     del.onclick = () => {
       if (confirm(`「${m.name}」を記録から消しますか？`)) {
-        Store.remove("meals", m.id).catch(fallbackToLocal);
+        Store.remove("meals", m.id).catch((e) => notifySaveFailed(e, "削除"));
       }
     };
     li.appendChild(del);
@@ -840,14 +919,13 @@ async function saveProfile() {
   const payload = {};
   settingFields.forEach(([, key]) => (payload[key] = state.profile[key]));
 
+  /* 置き場所を "me" に固定する。以前は「無ければ新規作成」にしていたため、
+     設定を続けて触ると作成が二重に走り、片方の設定が永久に反映されないことがあった。 */
   try {
-    if (state.profileId) {
-      await Store.update("profile", state.profileId, payload);
-    } else {
-      state.profileId = await Store.add("profile", payload);
-    }
+    await Store.setDoc("profile", PROFILE_ID, payload);
+    state.profileId = PROFILE_ID;
   } catch (e) {
-    fallbackToLocal(e);
+    notifySaveFailed(e, "設定の保存");
   }
   renderAll();
 }
@@ -943,12 +1021,12 @@ async function saveDaily() {
     activeKcal: Number(document.getElementById("inActive").value) || 0,
     updatedAt: new Date().toISOString(), // いつの時点の数字かを残す
   };
+  /* 日付そのものを置き場所にする。歩数と消費エネルギーを続けて入力したときに
+     同じ日の記録が2つできてしまうのを防ぐ。 */
   try {
-    const existing = state.daily.find((d) => d.date === key);
-    if (existing) await Store.update("daily", existing.id, patch);
-    else await Store.add("daily", patch);
+    await Store.setDoc("daily", key, patch);
   } catch (e) {
-    fallbackToLocal(e);
+    notifySaveFailed(e, "運動の記録");
   }
   renderAll();
 }
@@ -1169,9 +1247,16 @@ function showVerdict() {
   errorEl.hidden = true;
 }
 
-document.getElementById("btnEat").onclick = async () => {
+const btnEat = document.getElementById("btnEat");
+
+btnEat.onclick = async () => {
   const f = state.pending;
   if (!f) return;
+
+  // 保存が終わるまで押せなくする。反応が無いと二度押しされ、同じ食事が2件入るため
+  btnEat.disabled = true;
+  const label = btnEat.textContent;
+  btnEat.textContent = "記録中…";
 
   try {
     await Store.add("meals", {
@@ -1184,13 +1269,22 @@ document.getElementById("btnEat").onclick = async () => {
     });
   } catch (e) {
     // 保存できなかったときは判定結果を消さずに残しておく
-    fallbackToLocal(e);
-    alert("記録を保存できませんでした。\n" + ((e && e.message) || ""));
+    notifySaveFailed(e, "記録");
     return;
+  } finally {
+    btnEat.disabled = false;
+    btnEat.textContent = label;
   }
 
   state.pending = null;
   verdictEl.hidden = true;
+
+  const remain = calcRemain(todayKey());
+  showToast(
+    remain > 0
+      ? "記録しました　残り " + remain.toLocaleString() + " kcal"
+      : "記録しました　今日はオーバーしています"
+  );
 };
 
 document.getElementById("btnSkip").onclick = () => {
@@ -1251,11 +1345,12 @@ document.getElementById("mOk").onclick = () => {
   }
 };
 
-document.getElementById("btnManualOpen").onclick = () => {
-  openModal("写真なしで追加", null, async (edited) => {
+/* 手入力で1件足す。dateKey を渡すと、その日に記録できる（昨日の入れ忘れなど） */
+function openManualAdd(dateKeyToUse, title) {
+  openModal(title, null, async (edited) => {
     try {
       await Store.add("meals", {
-        date: todayKey(),
+        date: dateKeyToUse,
         name: edited.name,
         portion: edited.portion,
         kcal: edited.kcal,
@@ -1263,10 +1358,25 @@ document.getElementById("btnManualOpen").onclick = () => {
         createdAt: new Date().toISOString(),
       });
     } catch (e) {
-      fallbackToLocal(e);
-      alert("記録を保存できませんでした。\n" + ((e && e.message) || ""));
+      notifySaveFailed(e, "記録");
+      return;
     }
+
+    showToast(
+      dateKeyToUse === todayKey()
+        ? "記録しました　残り " + calcRemain(todayKey()).toLocaleString() + " kcal"
+        : labelOf(dateKeyToUse) + " に記録しました"
+    );
   });
+}
+
+document.getElementById("btnManualOpen").onclick = () => {
+  openManualAdd(todayKey(), "写真なしで追加");
+};
+
+/* 収支タブから、表示中の日に追加する */
+document.getElementById("btnAddToDay").onclick = () => {
+  openManualAdd(state.viewDate, labelOf(state.viewDate) + " に手で追加");
 };
 
 /* ---------- APIキーの動作確認 ---------- */

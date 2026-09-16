@@ -558,6 +558,41 @@ input:disabled, select:disabled { opacity: .45; }
 
 .empty { text-align: center; color: var(--ink-sub); font-size: 13px; padding: 18px 0; }
 
+/* ===== 一時的なお知らせ（トースト） =====
+   保存できたかどうかが分からないと不安なので、画面の下に一瞬だけ出す。 */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 26px;
+  transform: translateX(-50%) translateY(0);
+  z-index: 20;
+
+  max-width: calc(100vw - 32px);
+  padding: 12px 20px;
+  border-radius: 999px;
+
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: center;
+  box-shadow: 0 4px 20px rgba(0,0,0,.3);
+
+  opacity: 1;
+  transition: opacity .3s, transform .3s;
+}
+
+.toast[hidden] { display: none; }
+
+/* 消えるときだけ下にずらす */
+.toast.leaving {
+  opacity: 0;
+  transform: translateX(-50%) translateY(10px);
+}
+
+.toast.bad { background: var(--red); color: #fff; }
+
 /* ===== モーダル ===== */
 .modal {
   position: fixed;
