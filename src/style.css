@@ -266,6 +266,20 @@ body {
   letter-spacing: .04em;
 }
 
+/* APIキー欄は type="password" をやめた（パスワード欄があると、パスワード
+   マネージャーがページ全体をログイン画面と誤認して他の欄にも出てくるため）。
+   代わりにCSSで伏せ字にし、入力中だけ見えるようにする。 */
+#inApiKey {
+  font-family: "IBM Plex Mono", Consolas, monospace;
+  -webkit-text-security: disc;
+  text-security: disc;
+}
+
+#inApiKey:focus {
+  -webkit-text-security: none;
+  text-security: none;
+}
+
 .btn-link {
   background: none;
   border: none;

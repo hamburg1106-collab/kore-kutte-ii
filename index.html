@@ -117,10 +117,10 @@
     <h2 class="sec-title">運動・消費の入力</h2>
     <div class="burn-inputs">
       <label>歩数
-        <input type="number" id="inSteps" inputmode="numeric" placeholder="例 6000">
+        <input type="number" id="inSteps" inputmode="numeric" placeholder="例 6000" autocomplete="off">
       </label>
       <label>Googleヘルスの消費エネルギー(kcal)
-        <input type="number" id="inActive" inputmode="numeric" placeholder="寝る前に入れると正確">
+        <input type="number" id="inActive" inputmode="numeric" placeholder="寝る前に入れると正確" autocomplete="off">
         <span class="updated-at" id="activeUpdated"></span>
       </label>
     </div>
@@ -144,9 +144,9 @@
 
     <h2 class="sec-title">からだの情報</h2>
     <div class="form-grid">
-      <label>身長(cm)<input type="number" id="inHeight" inputmode="decimal" placeholder="170"></label>
-      <label>体重(kg)<input type="number" id="inWeight" inputmode="decimal" placeholder="65"></label>
-      <label>年齢<input type="number" id="inAge" inputmode="numeric" placeholder="35"></label>
+      <label>身長(cm)<input type="number" id="inHeight" inputmode="decimal" placeholder="170" autocomplete="off"></label>
+      <label>体重(kg)<input type="number" id="inWeight" inputmode="decimal" placeholder="65" autocomplete="off"></label>
+      <label>年齢<input type="number" id="inAge" inputmode="numeric" placeholder="35" autocomplete="off"></label>
       <label>性別
         <select id="inSex">
           <option value="male">男性</option>
@@ -178,7 +178,7 @@
 
     <h2 class="sec-title">写真判定の設定</h2>
     <label class="wide">Gemini APIキー
-      <input type="password" id="inApiKey" placeholder="AIza… から始まる文字列" autocomplete="off">
+      <input type="text" id="inApiKey" inputmode="text" placeholder="AIza… から始まる文字列" autocomplete="off">
     </label>
     <p class="hint">
       Google AI Studio（クレジットカード登録不要）で無料で取れます。
@@ -220,9 +220,9 @@
 <div class="modal" id="modal" hidden>
   <div class="modal-card">
     <h3 id="modalTitle">手入力で追加</h3>
-    <label>食べたもの<input type="text" id="mName" placeholder="例 ポテトチップス"></label>
-    <label>量<input type="text" id="mPortion" placeholder="例 1袋 60g"></label>
-    <label>カロリー(kcal)<input type="number" id="mKcal" inputmode="numeric" placeholder="335"></label>
+    <label>食べたもの<input type="text" id="mName" placeholder="例 ポテトチップス" autocomplete="off"></label>
+    <label>量<input type="text" id="mPortion" placeholder="例 1袋 60g" autocomplete="off"></label>
+    <label>カロリー(kcal)<input type="number" id="mKcal" inputmode="numeric" placeholder="335" autocomplete="off"></label>
     <div class="modal-actions">
       <button class="btn-sub" id="mCancel">キャンセル</button>
       <button class="btn-eat" id="mOk">決定</button>

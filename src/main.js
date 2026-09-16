@@ -1358,6 +1358,16 @@ document.getElementById("btnExport").onclick = () => {
 
 /* ---------- 起動 ---------- */
 
+/* パスワードマネージャーが歩数やカロリーの欄にまで反応してしまうのを抑える。
+   HTMLの autocomplete="off" と合わせ、主要なマネージャーの無効化属性も付けておく。 */
+document.querySelectorAll("input:not([type=file]), select").forEach((el) => {
+  el.setAttribute("autocomplete", "off");
+  el.setAttribute("data-1p-ignore", "");
+  el.setAttribute("data-lpignore", "true");
+  el.setAttribute("data-bwignore", "");
+  el.setAttribute("data-form-type", "other");
+});
+
 initStore();
 fillSettingsForm();
 renderAll();
