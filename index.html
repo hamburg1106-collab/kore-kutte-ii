@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>これ食っていい？は引っ越しました</title>
+<style>
+  body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0f1114;color:#e8eaed;font-family:system-ui,sans-serif;text-align:center;padding:16px}
+  a{color:#7fd38b;font-size:18px}
+</style>
+</head>
+<body>
+<div>
+  <p>「これ食っていい？」は新しい住所に引っ越しました。</p>
+  <p><a id="go" href="https://hamburg1106-collab.github.io/kore-kutte/">新しい住所を開く</a></p>
+  <p style="font-size:13px;opacity:.7">ホーム画面のアイコンは、新しい住所で入れ直してください。</p>
+</div>
+<script>
+  // 古い住所に残ったオフライン用の仕組みを外してから、新しい住所へ移動する
+  var to = "https://hamburg1106-collab.github.io/kore-kutte/" + location.search + location.hash;
+  document.getElementById("go").href = to;
+  var done = function(){ location.replace(to); };
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.getRegistrations().then(function(rs){
+      return Promise.all(rs.filter(function(r){ return r.scope.indexOf("/kore-kutte-ii/") >= 0; }).map(function(r){ return r.unregister(); }));
+    }).then(done, done);
+    setTimeout(done, 1500);
+  } else { done(); }
+</script>
+</body>
+</html>
